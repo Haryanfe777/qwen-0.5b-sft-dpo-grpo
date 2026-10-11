@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "posttrain"
+version = "0.1.0"
+description = "SFT, on-policy DPO and GRPO (RLVR) on Qwen2.5-0.5B for GSM8K, with failure analysis"
+requires-python = ">=3.10"
+# Exact pins: TRL renames config arguments between releases, so an unpinned
+# install on Kaggle can break a stage. torch is left to the platform's build.
+dependencies = [
+  "torch>=2.4",
+  "transformers==5.18.0",
+  "trl==1.14.1",
+  "peft==0.21.2",
+  "datasets==5.1.0",
+  "accelerate==1.15.0",
+  "pyyaml",
+  "tqdm",
+  "matplotlib",
+]
+
+[project.optional-dependencies]
+eval = ["lm-eval==0.4.13"]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

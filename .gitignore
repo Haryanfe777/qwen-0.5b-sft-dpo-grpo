@@ -1,0 +1,8 @@
+outputs/
+outputs_smoke/
+results_smoke/
+__pycache__/
+*.egg-info/
+.ipynb_checkpoints/
+wandb/
+.pytest_cache/
