@@ -1,0 +1,101 @@
+# Full run, sized for one Kaggle T4 (16 GB) or P100. Total wall time ~4 to 5 hours.
+# Every value can be overridden from the command line:  --set sft.lr=1e-4 eval.num_examples=300
+
+seed: 42
+base_model: Qwen/Qwen2.5-0.5B          # base (not Instruct): SFT has to teach the format, which makes each stage visible
+output_dir: outputs
+results_dir: results
+report_to: none                        # set to "wandb" to stream curves to Weights & Biases
+
+prompt_template: "Question: {question}\nAnswer: Let's think step by step.\n"
+
+data:
+  dataset: openai/gsm8k
+  subset: main
+  decontam_ngram: 13                   # drop train questions sharing any 13-gram with a test question
+  max_train: null
+  stage_sizes:                         # disjoint train slices; SFT gets the rest (~5,070)
+    pairs: 1200                        # questions the SFT model samples on to build DPO pairs
+    grpo: 1200                         # questions only GRPO sees
+
+sft:
+  lora_r: 32
+  lora_alpha: 64
+  lora_dropout: 0.05
+  target_modules: all-linear
+  lr: 2.0e-4
+  epochs: 2
+  max_steps: -1
+  batch_size: 8                        # 0.5B has a 152k vocabulary: logits dominate memory
+  grad_accum: 4                        # effective batch 32
+  max_length: 512
+  warmup_ratio: 0.03
+  val_size: 200
+  logging_steps: 10
+  eval_steps: 100
+  gradient_checkpointing: false
+
+pairs:                                 # on-policy sampling from the SFT model, on data.stage_sizes.pairs questions
+  samples_per_question: 4
+  temperature: 0.8
+  top_p: 0.95
+  max_new_tokens: 320
+  max_pairs_per_question: 2
+  gold_fallback: false                 # true = use the reference solution as "chosen" for never-solved questions
+  batch_size: 32                       # prompts per batch (x samples_per_question sequences)
+  backend: hf                          # "vllm" is ~5x faster if it installs cleanly
+
+dpo:
+  lora_r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  target_modules: all-linear
+  beta: 0.1
+  loss_type: sigmoid
+  lr: 3.0e-5
+  epochs: 2
+  max_steps: -1
+  batch_size: 4                        # x2 sequences (chosen + rejected)
+  grad_accum: 8                        # effective batch 32 pairs
+  max_length: 832
+  warmup_ratio: 0.05
+  val_size: 100
+  logging_steps: 10
+  eval_steps: 50
+  gradient_checkpointing: true
+
+grpo:
+  start_from: dpo                      # set to "sft" to measure GRPO without DPO
+  lora_r: 16
+  lora_alpha: 32
+  lora_dropout: 0.0
+  target_modules: all-linear
+  lr: 5.0e-5                           # LoRA needs a higher LR than full fine-tuning
+  max_steps: 200
+  batch_size: 8                        # completions per device step, must be divisible by num_generations
+  grad_accum: 8                        # 64 completions = 8 prompts x 8 per optimizer step
+  num_generations: 8
+  max_completion_length: 320
+  temperature: 0.9
+  beta: 0.0                            # no KL term (current default in TRL / DAPO-style)
+  loss_type: dapo
+  reward_weights: [1.0, 0.2]           # [correctness, format]
+  mask_truncated_completions: true
+  use_vllm: false
+  logging_steps: 5
+  gradient_checkpointing: true
+
+eval:
+  num_examples: null                   # null = full GSM8K test (1,319)
+  max_new_tokens: 384
+  batch_size: 64
+  backend: hf
+
+lm_eval:
+  stages: [base, sft, dpo, grpo]
+  batch_size: auto
+  limit: 500                           # per task; set null for full benchmarks
+  tasks:                               # task -> metric key in the harness output
+    gsm8k: "exact_match,strict-match"
+    arc_easy: "acc_norm,none"
+    hellaswag: "acc_norm,none"

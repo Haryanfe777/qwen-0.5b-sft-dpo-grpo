@@ -1,0 +1,34 @@
+# CPU smoke test: a tiny random Qwen2 model and a handful of examples.
+# Proves every stage runs end to end in a few minutes. The numbers it produces are meaningless.
+
+seed: 42
+base_model: trl-internal-testing/tiny-Qwen2ForCausalLM-2.5
+output_dir: outputs_smoke
+results_dir: results_smoke
+report_to: none
+prompt_template: "Question: {question}\nAnswer: Let's think step by step.\n"
+
+data: {dataset: openai/gsm8k, subset: main, decontam_ngram: 13, max_train: 64, stage_sizes: {pairs: 16, grpo: 16}}
+
+sft: {lora_r: 8, lora_alpha: 16, lora_dropout: 0.0, target_modules: all-linear, lr: 1.0e-3, epochs: 1,
+      max_steps: 4, batch_size: 4, grad_accum: 1, max_length: 256, val_size: 8, logging_steps: 1, eval_steps: 2}
+
+pairs: {samples_per_question: 4, temperature: 1.2, top_p: 1.0, max_new_tokens: 24,
+        max_pairs_per_question: 2, gold_fallback: true, batch_size: 8, backend: hf}
+
+dpo: {lora_r: 8, lora_alpha: 16, lora_dropout: 0.0, target_modules: all-linear, beta: 0.1, loss_type: sigmoid,
+      lr: 1.0e-4, epochs: 1, max_steps: 3, batch_size: 2, grad_accum: 1, max_length: 256, val_size: 4,
+      logging_steps: 1, eval_steps: 2}
+
+grpo: {start_from: dpo, lora_r: 8, lora_alpha: 16, lora_dropout: 0.0, target_modules: all-linear,
+       lr: 1.0e-4, max_steps: 2, batch_size: 4, grad_accum: 1, num_generations: 4, max_completion_length: 24,
+       temperature: 1.0, beta: 0.0, loss_type: dapo, reward_weights: [1.0, 0.2], mask_truncated_completions: false,
+       use_vllm: false, logging_steps: 1}
+
+eval: {num_examples: 16, max_new_tokens: 24, batch_size: 8, backend: hf}
+
+lm_eval:
+  stages: [base, grpo]
+  batch_size: 4
+  limit: 4
+  tasks: {arc_easy: "acc_norm,none"}
