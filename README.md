@@ -21,7 +21,7 @@ as an external reference point.
 | # | Step | Status |
 |---|---|---|
 | 0 | Repo setup, pinned dependencies | done |
-| 1 | Answer parsing, verifier, rewards + unit tests | |
+| 1 | Answer parsing, verifier, rewards + unit tests | done |
 | 2 | Data loading, dedup, decontamination, disjoint stage splits | |
 | 3 | Kaggle environment check | |
 | 4 | Smoke run of every stage on a tiny model | |
